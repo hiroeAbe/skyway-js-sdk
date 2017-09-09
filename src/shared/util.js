@@ -1,9 +1,11 @@
+//@flow
+
 /**
  * Validate the Peer ID format.
  * @param {string} [id] - A Peer ID.
  * @return {boolean} True if the peerId format is valid. False if not.
  */
-function validateId(id) {
+function validateId(id: ?string): boolean {
   // Allow empty ids
   return !id || /^[A-Za-z0-9_-]+(?:[ _-][A-Za-z0-9]+)*$/.exec(id);
 }
@@ -13,7 +15,7 @@ function validateId(id) {
  * @param {string} [key] A SkyWay API key.
  * @return {boolean} True if the API key format is valid. False if not.
  */
-function validateKey(key) {
+function validateKey(key: ?string): boolean {
   // Allow empty keys
   return !key || /^[a-z0-9]{8}(-[a-z0-9]{4}){3}-[a-z0-9]{12}$/.exec(key);
 }
@@ -22,7 +24,7 @@ function validateKey(key) {
  * Return random ID.
  * @return {string} A text consisting of 16 chars.
  */
-function randomId() {
+function randomId(): string {
   const keyLength = 16;
   // '36' means that we want to convert the number to a string using chars in
   // the range of '0-9a-z'. The concatenated 0's are for padding the key,
@@ -35,7 +37,7 @@ function randomId() {
  * Generate random token.
  * @return {string} A token consisting of random alphabet and integer.
  */
-function randomToken() {
+function randomToken(): string {
   return Math.random().toString(36).substr(2);
 }
 
@@ -44,7 +46,7 @@ function randomToken() {
  * @param {Array} buffers - An Array of ArrayBuffer.
  * @return {ArrayBuffer} The combined ArrayBuffer.
  */
-function joinArrayBuffers(buffers) {
+function joinArrayBuffers(buffers: Array<ArrayBuffer>): ArrayBuffer {
   let size = buffers.reduce((sum, buffer) => {
     return sum + buffer.byteLength;
   }, 0);
@@ -62,7 +64,7 @@ function joinArrayBuffers(buffers) {
  * @param {Blob} blob - The Blob to be read as ArrayBuffer.
  * @param {Function} cb - Callback function that called after load event fired.
  */
-function blobToArrayBuffer(blob, cb) {
+function blobToArrayBuffer(blob: Blob, cb: function): void {
   let fr = new FileReader();
   fr.onload = event => {
     cb(event.target.result);
@@ -74,7 +76,7 @@ function blobToArrayBuffer(blob, cb) {
  * Whether the protocol is https or not.
  * @return {boolean} Whether the protocol is https or not.
  */
-function isSecure() {
+function isSecure(): boolean {
   return location.protocol === 'https:';
 }
 
@@ -82,7 +84,7 @@ function isSecure() {
  * Detect browser.
  * @return {string} Browser name or empty string for not supported.
  */
-function detectBrowser() {
+function detectBrowser(): string {
   const ua = navigator.userAgent;
 
   switch (true) {

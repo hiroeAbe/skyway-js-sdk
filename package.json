@@ -10,7 +10,9 @@
     "lint": "eslint ./examples ./src ./tests",
     "build": "NODE_ENV=production webpack",
     "dev": "webpack -w",
-    "doc": "jsdoc -c ./jsdoc.config.js"
+    "doc": "jsdoc -c ./jsdoc.config.js",
+    "flow": "flow",
+    "flow:watch": "flow-watch"
   },
   "repository": {
     "type": "git",
@@ -25,6 +27,8 @@
     "del-cli": "^1.1.0",
     "eslint": "^4.2.0",
     "eslint-config-google": "^0.9.1",
+    "flow-bin": "^0.54.1",
+    "flow-watch": "^1.1.1",
     "inject-loader": "^3.0.0",
     "istanbul": "^0.4.2",
     "istanbul-instrumenter-loader": "^2.0.0",

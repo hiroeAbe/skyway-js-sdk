@@ -1,3 +1,5 @@
+//@flow
+
 import Enum from 'enum';
 
 const LOG_PREFIX = 'SkyWay: ';
@@ -8,11 +10,14 @@ const LogLevel = new Enum({
   FULL:  3,
 });
 
+
 /**
  * Class for logging
  * This class exports only one instance(a.k.a. Singleton)
  */
 class Logger {
+  _logLevel: number
+  LOG_LEVELS: Enum
   /**
    * Create a Logger instance.
    *
@@ -26,10 +31,13 @@ class Logger {
    * Set the level of log.
    * @param {number} [level=0] The log level. 0: NONE, 1: ERROR, 2: WARN, 3:FULL.
    */
-  setLogLevel(level) {
-    if (level.value) {
-      level = level.value;
-    }
+  setLogLevel(level: ?number): void {
+    // [Question] below does not match with definition of level parameter.
+    // Can we remove below?
+    //
+    // if (level.value) {
+    //   level = level.value;
+    // }
 
     const debugLevel = parseInt(level, 10);
 
@@ -56,7 +64,7 @@ class Logger {
    * Output a warning message to the Web Console.
    * @param {...*} args - arguments to warn.
    */
-  warn(...args) {
+  warn(...args: any): void {
     if (this._logLevel >= LogLevel.WARN.value) {
       console.warn(LOG_PREFIX, ...args);
     }
@@ -66,7 +74,7 @@ class Logger {
    * Output an error message to the Web Console.
    * @param {...*} args - arguments to error.
    */
-  error(...args) {
+  error(...args: any): void {
     if (this._logLevel >= LogLevel.ERROR.value) {
       console.error(LOG_PREFIX, ...args);
     }
@@ -76,7 +84,7 @@ class Logger {
    * Output a log message to the Web Console.
    * @param {...*} args - arguments to log.
    */
-  log(...args) {
+  log(...args: any): void {
     if (this._logLevel >= LogLevel.FULL.value) {
       console.log(LOG_PREFIX, ...args);
     }

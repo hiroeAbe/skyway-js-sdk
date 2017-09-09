@@ -1,3 +1,5 @@
+// @flow
+
 import EventEmitter from 'events';
 import Enum         from 'enum';
 
@@ -21,6 +23,19 @@ const PeerEvents = new Enum([
   'disconnected',
 ]);
 
+type PeerOptions = {
+  key: string,
+  debug: ?number,
+  host: ?string,
+  port: ?number,
+  dispatcherHost: ?string,
+  dispatcherPort: ?number,
+  dispatcherSecure: ?boolean,
+  config: ?Object,
+  turn: ?boolean,
+  credential: ?Object
+}
+
 /**
  * Class that manages all p2p connections and rooms.
  * This class contains socket.io message handlers.
@@ -35,7 +50,7 @@ class Peer extends EventEmitter {
    * @param {number} [options.debug=0] - Log level. NONE:0, ERROR:1, WARN:2, FULL:3.
    * @param {string} [options.host] - The host name of signaling server.
    * @param {number} [options.port] - The port number of signaling server.
-   * @param {string} [options.dispatcherPort=dispatcher.webrtc.ecl.ntt.com] - The host name of the dispatcher server.
+   * @param {string} [options.dispatcherHost=dispatcher.webrtc.ecl.ntt.com] - The host name of the dispatcher server.
    * @param {number} [options.dispatcherPort=443] - The port number of dispatcher server.
    * @param {boolean} [options.dispatcherSecure=true] - True if the dispatcher server supports https.
    * @param {object} [options.config=config.defaultConfig] - A RTCConfiguration dictionary for the RTCPeerConnection.
@@ -45,7 +60,15 @@ class Peer extends EventEmitter {
    + @param {number} [options.credential.ttl] - Time to live; The credential expires at timestamp + ttl.
    + @param {string} [options.credential.authToken] - Credential token calculated with HMAC.
    */
-  constructor(id, options) {
+  connections: Object
+  rooms: Object
+  options: Object
+  id: string
+  socket: Socket
+  _queuedMessages: Object
+  _pcConfig: Object
+
+  constructor(id: ?string, options: string|PeerOptions) {
     super();
 
     this.connections = {};
@@ -73,16 +96,19 @@ class Peer extends EventEmitter {
       dispatcherPort:   config.DISPATCHER_PORT,
     };
 
-    this.options = Object.assign({}, defaultOptions, options);
+    // to avoid Error in flow, we will check type of options
+    this.options = typeof(options) === "object" ? Object.assign({}, defaultOptions, options) : Object.assign({}, defaultOptions)
 
     logger.setLogLevel(this.options.debug);
 
-    if (!util.validateId(id)) {
+    // to avoid Error in flow, we will check id is defined
+    if (id && !util.validateId(id)) {
       this._abort('invalid-id', `ID "${id}" is invalid`);
       return;
     }
 
-    if (!util.validateKey(options.key)) {
+    // to avoid Error in flow, we will check type of options
+    if (typeof(options) === 'object' && !util.validateKey(options.key)) {
       this._abort('invalid-key', `API KEY "${this.options.key}" is invalid`);
       return;
     }
@@ -108,10 +134,11 @@ class Peer extends EventEmitter {
    * @param {number} [options.audioBandwidth] - A max audio bandwidth(kbps)
    * @param {string} [options.videoCodec] - A video codec like 'H264'
    * @param {string} [options.audioCodec] - A video codec like 'PCMU'
-   * @return {MediaConnection} An instance of MediaConnection.
+   * @return {MediaConnection|Null} An instance of MediaConnection.
    */
-  call(peerId, stream, options = {}) {
-    if (!this._checkOpenStatus()) {
+  call(peerId: string, stream: ?MediaStream, options: ?Object = {}):MediaConnection|null {
+    // to avoid flow Error, we will check options is defined
+    if (!options || !this._checkOpenStatus() ) {
       return;
     }
 
@@ -132,10 +159,10 @@ class Peer extends EventEmitter {
    * @param {string} [options.label] - Label to easily identify the connection on either peer.
    * @param {string} [options.serialization] - How to serialize data when sending.
    *                  One of 'binary', 'json' or 'none'.
-   * @return {DataConnection} An instance of DataConnection.
+   * @return {DataConnection|Null} An instance of DataConnection.
    */
-  connect(peerId, options = {}) {
-    if (!this._checkOpenStatus()) {
+  connect(peerId: string, options: ?Object = {}): DataConnection|null {
+    if (!options || !this._checkOpenStatus()) {
       return;
     }
 
@@ -158,14 +185,14 @@ class Peer extends EventEmitter {
    * @param {string} [roomOptions.audioCodec] - A video codec like 'PCMU'
    * @return {SFURoom|MeshRoom} - An instance of SFURoom or MeshRoom.
    */
-  joinRoom(roomName, roomOptions = {}) {
-    if (!this._checkOpenStatus()) {
+  joinRoom(roomName: string, roomOptions: ?Object = {}) {
+    if (!roomOptions || !this._checkOpenStatus()) {
       return;
     }
 
     if (!roomName) {
       const err = new Error('Room name must be defined.');
-      err.type = 'room-error';
+      err.type = 'room-error';  // [Question] type property is really needed? this code makes flow error
       logger.error(err);
       this.emit(Peer.EVENTS.error.key, err);
       return null;
@@ -188,7 +215,7 @@ class Peer extends EventEmitter {
    * @param {Object} connectionId - An ID to uniquely identify the connection.
    * @return {MediaConnection|DataConnection} Search result.
    */
-  getConnection(peerId, connectionId) {
+  getConnection(peerId: string, connectionId: Object): MediaConnection|DataConnection|null {
     if (!this._checkOpenStatus()) {
       return;
     }
@@ -207,14 +234,14 @@ class Peer extends EventEmitter {
    * Whether the socket is connecting to the signalling server or not.
    * @type {boolean} The open status.
    */
-  get open() {
+  get open(): boolean {
     return this.socket.isOpen;
   }
 
   /**
    * Close all connections and disconnect socket.
    */
-  destroy() {
+  destroy(): void {
     this._cleanup();
     this.disconnect();
   }
@@ -222,7 +249,7 @@ class Peer extends EventEmitter {
   /**
    * Close socket and clean up some properties, then emit disconnect event.
    */
-  disconnect() {
+  disconnect(): void {
     if (this.open) {
       this.socket.close();
       this.emit(Peer.EVENTS.disconnected.key, this.id);
@@ -232,7 +259,7 @@ class Peer extends EventEmitter {
   /**
    * Reconnect to SkyWay server. Does not work after a peer.destroy().
    */
-  reconnect() {
+  reconnect(): void {
     if (!this.open) {
       this.socket.reconnect();
     }
@@ -245,7 +272,7 @@ class Peer extends EventEmitter {
    + @param {number} [newCredential.ttl] - Time to live; The credential expires at timestamp + ttl.
    + @param {string} [newCredential.authToken] - Credential token calculated with HMAC.
    */
-  updateCredential(newCredential) {
+  updateCredential(newCredential: Object): void {
     this.socket.updateCredential(newCredential);
   }
 
@@ -253,7 +280,7 @@ class Peer extends EventEmitter {
    * Call Rest API and get the list of peerIds assciated with API key.
    * @param {function} cb - The callback function that is called after XHR.
    */
-  listAllPeers(cb) {
+  listAllPeers(cb: function): void {
     if (!this._checkOpenStatus()) {
       return;
     }
@@ -282,7 +309,7 @@ class Peer extends EventEmitter {
           'It doesn\'t look like you have permission to list peers IDs. ' +
           'Please enable the SkyWay REST API on dashboard'
         );
-        err.type = 'list-error';
+        err.type = 'list-error';  // [Question] this really needed?
         logger.error(err);
         self.emit(Peer.EVENTS.error.key, err);
       } else if (http.status === 200) {
@@ -298,7 +325,7 @@ class Peer extends EventEmitter {
    * Return socket open status and emit error when it's not open.
    * @return {boolean} - The socket status.
    */
-  _checkOpenStatus() {
+  _checkOpenStatus(): boolean {
     if (!this.open) {
       this._emitNotConnectedError();
     }
@@ -308,23 +335,23 @@ class Peer extends EventEmitter {
   /**
    * Emit not connected error.
    */
-  _emitNotConnectedError() {
+  _emitNotConnectedError(): void {
     logger.warn('You cannot connect to a new Peer because you are not connecting to SkyWay server now.' +
       'You can create a new Peer to reconnect, or call reconnect() ' +
       'on this peer if you believe its ID to still be available.');
 
     const err = new Error('Cannot connect to new Peer before connecting to SkyWay server or after disconnecting from the server.');
-    err.type = 'disconnected';
+    err.type = 'disconnected'; // [Question] this really needed?
     logger.error(err);
     this.emit(Peer.EVENTS.error.key, err);
   }
 
   /**
    * Creates new Socket and initalize its message handlers.
-   * @param {string} id - User's peerId.
+   * @param {string} [id] - User's peerId.
    * @private
    */
-  _initializeServerConnection(id) {
+  _initializeServerConnection(id: ?string): void {
     this.socket = new Socket(
       this.options.key,
       {
@@ -375,7 +402,7 @@ class Peer extends EventEmitter {
    * @param {string} [roomOptions.audioCodec] - A video codec like 'PCMU'
    * @return {SFURoom} - An instance of SFURoom.
    */
-  _initializeSfuRoom(roomName, roomOptions = {}) {
+  _initializeSfuRoom(roomName: string, roomOptions: Object = {}) {
     if (this.rooms[roomName]) {
       return this.rooms[roomName];
     }
@@ -407,7 +434,7 @@ class Peer extends EventEmitter {
    * @param {string} [roomOptions.audioCodec] - A video codec like 'PCMU'
    * @return {SFURoom} - An instance of MeshRoom.
    */
-  _initializeFullMeshRoom(roomName, roomOptions = {}) {
+  _initializeFullMeshRoom(roomName: string, roomOptions: ?Object = {}) {
     if (this.rooms[roomName]) {
       return this.rooms[roomName];
     }
@@ -429,7 +456,7 @@ class Peer extends EventEmitter {
    * Set up socket's message handlers.
    * @private
    */
-  _setupMessageHandlers() {
+  _setupMessageHandlers(): void {
     this.socket.on(config.MESSAGE_TYPES.SERVER.OPEN.key, openMessage => {
       this.id = openMessage.peerId;
       this._pcConfig = Object.assign({}, this.options.config);
@@ -670,7 +697,7 @@ class Peer extends EventEmitter {
    * @param {MediaConnection|DataConnection} connection - The connection to be set up.
    * @private
    */
-  _setupConnectionMessageHandlers(connection) {
+  _setupConnectionMessageHandlers(connection: MediaConnection|DataConnection): void {
     connection.on(Connection.EVENTS.candidate.key, candidateMessage => {
       this.socket.send(config.MESSAGE_TYPES.CLIENT.SEND_CANDIDATE.key, candidateMessage);
     });
@@ -684,10 +711,10 @@ class Peer extends EventEmitter {
 
   /**
    * Set up the message event handlers for a Room
-   * @param {Room} room - The room to be set up.
+   * @param {SFURoom|MeshRoom} room - The room to be set up.
    * @private
    */
-  _setupRoomMessageHandlers(room) {
+  _setupRoomMessageHandlers(room: SFURoom|MeshRoom): void {
     room.on(SFURoom.MESSAGE_EVENTS.broadcast.key, sendMessage => {
       this.socket.send(config.MESSAGE_TYPES.CLIENT.ROOM_SEND_DATA.key, sendMessage);
     });
@@ -705,7 +732,7 @@ class Peer extends EventEmitter {
    * @param {SFURoom} room - The room to be set up.
    * @private
    */
-  _setupSFURoomMessageHandlers(room) {
+  _setupSFURoomMessageHandlers(room: SFURoom): void {
     this._setupRoomMessageHandlers(room);
 
     room.on(SFURoom.MESSAGE_EVENTS.offerRequest.key, sendMessage => {
@@ -724,7 +751,7 @@ class Peer extends EventEmitter {
    * @param {MeshRoom} room - The room to be set up.
    * @private
    */
-  _setupMeshRoomMessageHandlers(room) {
+  _setupMeshRoomMessageHandlers(room: MeshRoom): void {
     this._setupRoomMessageHandlers(room);
 
     room.on(MeshRoom.MESSAGE_EVENTS.offer.key, offerMessage => {
@@ -747,7 +774,7 @@ class Peer extends EventEmitter {
    * @param {string} message - Error description.
    * @private
    */
-  _abort(type, message) {
+  _abort(type: string, message: string): void {
     logger.error('Aborting!');
     this.disconnect();
 
@@ -763,7 +790,7 @@ class Peer extends EventEmitter {
    * @param {MediaConnection|DataConnection} connection - The connection to be added.
    * @private
    */
-  _addConnection(peerId, connection) {
+  _addConnection(peerId: string, connection: MediaConnection|DataConnection): void {
     if (!this.connections[peerId]) {
       this.connections[peerId] = [];
     }
@@ -778,7 +805,7 @@ class Peer extends EventEmitter {
    * @param {object} message - The object containing the message from remote peer.
    * @private
    */
-  _storeMessage(type, message) {
+  _storeMessage(type: string, message: Object): void {
     if (!this._queuedMessages[message.connectionId]) {
       this._queuedMessages[message.connectionId] = [];
     }
@@ -790,7 +817,7 @@ class Peer extends EventEmitter {
    * Close all connections and emit close event.
    * @private
    */
-  _cleanup() {
+  _cleanup(): void {
     if (this.connections) {
       for (let peer of Object.keys(this.connections)) {
         this._cleanupPeer(peer);
@@ -804,7 +831,7 @@ class Peer extends EventEmitter {
    * @param {string} peer - The peerId of the peer to be closed.
    * @private
    */
-  _cleanupPeer(peer) {
+  _cleanupPeer(peer: string): void {
     if (this.connections[peer]) {
       for (let connection of this.connections[peer]) {
         connection.close();
@@ -863,5 +890,3 @@ class Peer extends EventEmitter {
 }
 
 export default Peer;
-// for interop exports
-module.exports = Peer;
